@@ -1,0 +1,16 @@
+.vs/
+.vscode/
+out/
+build/
+x64/
+Debug/
+Release/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.user
+*.suo
+*.obj
+*.exe
+*.pdb
+*.ilk
