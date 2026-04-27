@@ -18,20 +18,12 @@
 #include <optional>
 #include <filesystem>
 #include <set>
+#include "main.h"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-
-/*
-GPU renders frame
-   ↓
-frame stored in one swapchain image
-   ↓
-that image is presented to the window
-   ↓
-screen shows it*/
 
 /*
 GLFW creates the window,
@@ -111,8 +103,16 @@ struct Vertex {
     }
 };
 
+struct MeshInput {
+    std::vector<Vertex>* vertices = nullptr;
+    std::vector<uint32_t>* indices = nullptr;
+    std::vector<int>* anchors = nullptr;
+    glm::vec3 delta{ 0.0f, 0.0f, 0.0f };
+};
 
-class HelloTriangleApplication {
+static MeshInput* g_meshInput = nullptr;
+
+class MeshApp {
 public:
     void run() {
         initWindow();
@@ -203,6 +203,29 @@ private:
         glm::vec3 dir;
     };
 
+    // ---------------- MESSAGE PASSING DRAG STATE ----------------
+
+    // Current cursor displacement from the drag start point
+    glm::vec3 lastDragDelta{ 0.0f, 0.0f, 0.0f }; // initial
+
+    // Original position of every mesh vertex before this drag started
+    std::vector<glm::vec3> preDragAllPositions;
+
+    // Mesh adjacency graph.
+    // meshNeighbors[i] = list of vertices connected to vertex i
+    std::vector<std::vector<int>> meshNeighbors;
+
+    // Current propagated displacement for every vertex.
+    std::vector<glm::vec3> displacement;
+
+    // Temporary array used during one message-passing update.
+    std::vector<glm::vec3> nextDisplacement;
+
+    // isAnchor[i] = 1 means vertex i is directly controlled by cursor drag.
+    std::vector<int> isAnchor;
+
+    // True only during an active drag.
+    bool pregelDragActive = false;
 
     //-------------------------------------------------------------------------------------
 
@@ -337,7 +360,7 @@ private:
         draggedVertexGroup.clear();
         draggedVertexOriginalPositions.clear();
 
-        float radius = 1.0f;   // tune this
+        float radius = 0.1f;   // tune this
 
         for (int i = 0; i < static_cast<int>(vertices.size()); ++i) {
             if (glm::length(vertices[i].pos - seedPos) < radius) {
@@ -546,37 +569,51 @@ private:
 
         std::string warn, err;
 
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "../../../models/12683_hand_v1_FINAL.obj")) { // GREAT
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err,
+            "../../../models/12683_hand_v1_FINAL.obj")) {
             throw std::runtime_error(warn + err);
         }
 
         vertices.clear();
         indices.clear();
 
+        std::map<int, uint32_t> objVertexToLocalVertex;
+
         for (const auto& shape : shapes) {
             for (const auto& index : shape.mesh.indices) {
+                int objVertexID = index.vertex_index;
 
-                Vertex vertex{};
+                auto it = objVertexToLocalVertex.find(objVertexID);
 
-                vertex.pos = {
-                    attrib.vertices[3 * index.vertex_index + 0],
-                    attrib.vertices[3 * index.vertex_index + 1],
-                    attrib.vertices[3 * index.vertex_index + 2]
-                };
+                if (it == objVertexToLocalVertex.end()) {
+                    Vertex vertex{};
 
-                if (!attrib.normals.empty()) {
-                    vertex.normal = {
-                        attrib.normals[3 * index.normal_index + 0],
-                        attrib.normals[3 * index.normal_index + 1],
-                        attrib.normals[3 * index.normal_index + 2]
+                    vertex.pos = {
+                        attrib.vertices[3 * objVertexID + 0],
+                        attrib.vertices[3 * objVertexID + 1],
+                        attrib.vertices[3 * objVertexID + 2]
                     };
+
+                    if (!attrib.normals.empty() && index.normal_index >= 0) {
+                        vertex.normal = {
+                            attrib.normals[3 * index.normal_index + 0],
+                            attrib.normals[3 * index.normal_index + 1],
+                            attrib.normals[3 * index.normal_index + 2]
+                        };
+                    }
+                    else {
+                        vertex.normal = { 0.0f, 0.0f, 1.0f };
+                    }
+
+                    uint32_t newLocalID = static_cast<uint32_t>(vertices.size());
+                    vertices.push_back(vertex);
+                    objVertexToLocalVertex[objVertexID] = newLocalID;
+
+                    indices.push_back(newLocalID);
                 }
                 else {
-                    vertex.normal = { 0.0f, 0.0f, 1.0f };
+                    indices.push_back(it->second);
                 }
-
-                vertices.push_back(vertex);
-                indices.push_back(indices.size());
             }
         }
 
@@ -592,12 +629,8 @@ private:
         glm::vec3 extent = maxPos - minPos;
         float maxExtent = std::max(extent.x, std::max(extent.y, extent.z));
 
-        std::cout << "Loaded vertices: " << vertices.size() << "\n";
-        std::cout << "Loaded indices: " << indices.size() << "\n";
-        std::cout << "min: " << minPos.x << ", " << minPos.y << ", " << minPos.z << "\n";
-        std::cout << "max: " << maxPos.x << ", " << maxPos.y << ", " << maxPos.z << "\n";
-        std::cout << "center: " << center.x << ", " << center.y << ", " << center.z << "\n";
-        std::cout << "maxExtent: " << maxExtent << "\n";
+        std::cout << "Loaded unique vertices: " << vertices.size() << "\n";
+        std::cout << "Loaded triangle indices: " << indices.size() << "\n";
 
         for (auto& v : vertices) {
             v.pos = (v.pos - center) / maxExtent;
@@ -1464,10 +1497,18 @@ private:
 
             if (selectedVertex != -1) {
                 isDragging = true;
+
+                preDragAllPositions.clear();
+                preDragAllPositions.reserve(vertices.size());
+
+                for (const auto& v : vertices) {
+                    preDragAllPositions.push_back(v.pos);
+                }
+
                 originalVertexPos = vertices[selectedVertex].pos;
                 buildDraggedVertexGroup(originalVertexPos);
 
-                glm::vec3 hitPoint;
+                glm::vec3 hitPoint; // 3D point on drag plane
                 bool ok = intersectRayWithPlane(
                     ray,
                     originalVertexPos,
@@ -1475,8 +1516,8 @@ private:
                     hitPoint
                 );
 
-                if (ok) {
-                    dragStartWorldPos = hitPoint;
+                if (ok) { // if hit successfully, only update the mesh if we successfully found a valid 3D mouse position
+                    dragStartWorldPos = hitPoint; // SAVED
                 }
                 else {
                     isDragging = false;
@@ -1484,8 +1525,7 @@ private:
                     draggedVertexGroup.clear();
                 }
             }
-        }
-        else if (leftPressed && isDragging) {
+        } else if (leftPressed && isDragging) {
             glm::vec3 hitPoint;
             bool ok = intersectRayWithPlane(
                 ray,
@@ -1495,35 +1535,215 @@ private:
             );
 
             if (ok) {
-                glm::vec3 delta = hitPoint - dragStartWorldPos;
+                lastDragDelta = hitPoint - dragStartWorldPos;
 
-                for (size_t k = 0; k < draggedVertexGroup.size(); ++k) {
+                for (size_t k = 0; k < draggedVertexGroup.size(); k++) {
                     int idx = draggedVertexGroup[k];
-                    vertices[idx].pos = draggedVertexOriginalPositions[k] + delta;
+                    vertices[idx].pos = draggedVertexOriginalPositions[k] + lastDragDelta;
                 }
 
                 vertexBufferDirty = true;
             }
         }
         else if (!leftPressed && isDragging) {
+            std::cout << "[rank " << get_worker_id() << "] mouse released, entering meshPregel\n";
+
+            meshPregel(lastDragDelta, draggedVertexGroup);
+
+            std::cout << "[rank " << get_worker_id() << "] meshPregel returned\n";
+
+            vertexBufferDirty = true;
+
             isDragging = false;
             selectedVertex = -1;
             draggedVertexGroup.clear();
+            draggedVertexOriginalPositions.clear();
         }
     }
 
+    // Vulkan mesh, dragged anchor vertices, cursor displacement
+    class MeshPregelVertex : public BaseVertex<MeshValue, int, MeshMessage, DefaultHash, BaseCombiner<MeshMessage>, BaseAggregator<void> > {
+    public:
+        typedef MeshValue ValueType;
+        typedef int EdgeType;
+        typedef MeshMessage MessageType;
+        typedef DefaultHash HashType;
+        typedef BaseCombiner<MeshMessage> CombinerType;
+        typedef BaseAggregator<void> AggregatorType;
 
+        MeshPregelVertex() {}
+        MeshPregelVertex(VertexID id) : BaseVertex<MeshValue, int, MeshMessage, DefaultHash, BaseCombiner<MeshMessage>, BaseAggregator<void> >(id) {}
+        MeshPregelVertex(VertexID id, MeshValue &value) : BaseVertex<MeshValue, int, MeshMessage, DefaultHash, BaseCombiner<MeshMessage>, BaseAggregator<void> >(id, value) {}
+
+        bool operator<(const MeshPregelVertex& rhs) const {
+            return this->id() < rhs.id();
+        }
+
+        bool operator==(const MeshPregelVertex& rhs) const {
+            return this->id() == rhs.id();
+        }
+
+        bool operator!=(const MeshPregelVertex& rhs) const {
+            return this->id() != rhs.id();
+        }
+
+        void compute(std::vector<MeshMessage> &messages) {
+            if (!value().anchor && !messages.empty()) {
+                float sx = 0.0f;
+                float sy = 0.0f;
+                float sz = 0.0f;
+
+                for (auto& msg : messages) {
+                    sx += msg.dx;
+                    sy += msg.dy;
+                    sz += msg.dz;
+                }
+
+                float inv = 1.0f / static_cast<float>(messages.size());
+
+                float avgX = sx * inv;
+                float avgY = sy * inv;
+                float avgZ = sz * inv;
+
+                float alpha = 0.5f;
+
+                value().disp_x = (1.0f - alpha) * value().disp_x + alpha * avgX;
+                value().disp_y = (1.0f - alpha) * value().disp_y + alpha * avgY;
+                value().disp_z = (1.0f - alpha) * value().disp_z + alpha * avgZ;
+            }
+
+            MeshMessage out;
+            out.dx = value().disp_x;
+            out.dy = value().disp_y;
+            out.dz = value().disp_z;
+
+            for (auto& e : edges()) {
+                send_message(e.target, out);
+            }
+
+            if (step_num() >= 100) {
+                vote_for_halt();
+            }
+        }
+    };
+
+    class MeshGraphLoader {
+    public:
+        void set_id(int worker_id) {
+            id = worker_id;
+        }
+
+        void set_buffer(GraphBuffer<MeshPregelVertex>* b) {
+            buffer = b;
+        }
+
+        void load_graph() {
+            MeshInput &input = *g_meshInput;
+            int n = input.vertices->size();
+            std::vector<int> isAnchor(n, 0);
+            for (int idx : *input.anchors) {
+                if (idx >= 0 && idx < n) {
+                    isAnchor[idx] = 1;
+                }
+            }
+
+            for (int i = 0; i < n; i++) {
+                glm::vec3 p = (*input.vertices)[i].pos;
+                MeshValue value;
+                value.base_x = p.x;
+                value.base_y = p.y;
+                value.base_z = p.z;
+
+                if (isAnchor[i]) {
+                    value.disp_x = input.delta.x;
+                    value.disp_y = input.delta.y;
+                    value.disp_z = input.delta.z;
+                    value.anchor = 1;
+                } else {
+                    value.disp_x = 0.0f;
+                    value.disp_y = 0.0f;
+                    value.disp_z = 0.0f;
+                    value.anchor = 0;
+                }
+                buffer->add_vertex(i, value);
+            }
+
+            auto addUndirectedEdge = [&](int a, int b) { 
+                int dummy = 1;
+                BaseEdge<int> e1(b, dummy);
+                BaseEdge<int> e2(a, dummy);
+                buffer->add_edge(a, e1);
+                buffer->add_edge(b, e2);
+            };
+
+            for (size_t i = 0; i + 2 < input.indices->size(); i += 3) {
+                int a = static_cast<int>((*input.indices)[i]);
+                int b = static_cast<int>((*input.indices)[i + 1]);
+                int c = static_cast<int>((*input.indices)[i + 2]);
+                addUndirectedEdge(a, b);
+                addUndirectedEdge(b, c);
+                addUndirectedEdge(c, a);
+            }
+        }
+    private:
+        int id = 0;
+        GraphBuffer<MeshPregelVertex>* buffer = nullptr;
+    };
+    void meshPregel(const glm::vec3& delta, const std::vector<int>& anchors) {
+        int workers = get_num_workers();
+
+        if (workers != 1) {
+            std::cerr << "ERROR: interactive meshPregel currently only works with 1 MPI rank.\n";
+            std::cerr << "You are running with " << workers << " ranks.\n";
+            return;
+        }
+
+        MeshInput input;
+        input.vertices = &vertices;
+        input.indices = &indices;
+        input.anchors = const_cast<std::vector<int>*>(&anchors);
+        input.delta = delta;
+
+        g_meshInput = &input;
+
+        int num_partitions_dum = 1;
+
+        Worker<MeshPregelVertex, MeshGraphLoader> worker;
+        worker.run(num_partitions_dum);
+
+        for (auto& part : worker.local_partitions()) {
+            for (auto& v : part.vertexes()) {
+                int id = v.id();
+
+                if (id < 0 || id >= static_cast<int>(vertices.size())) {
+                    continue;
+                }
+
+                MeshValue& val = v.value();
+
+                vertices[id].pos = glm::vec3(
+                    val.base_x + val.disp_x,
+                    val.base_y + val.disp_y,
+                    val.base_z + val.disp_z
+                );
+            }
+        }
+
+        vertexBufferDirty = true;
+        g_meshInput = nullptr;
+    }
 };
 
-int main()
-{
-    try
-    {
-        HelloTriangleApplication app;
+int main(int argc, char** argv) {
+    try {
+        init_pregel(argc, argv);
+
+        MeshApp app;
         app.run();
+
+        MPI_Finalize();
     }
-    catch (const std::exception& e)
-    {
+    catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;
         return EXIT_FAILURE;
     }

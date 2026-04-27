@@ -8,8 +8,6 @@ int get_worker_id();
 int get_num_workers();
 
 void init_workers(int* argc, char*** argv);
-void worker_finalize();
-void worker_barrier();
 int all_sum(int my_copy);
 
 void pregel_send(void* buf, int size, int dst);

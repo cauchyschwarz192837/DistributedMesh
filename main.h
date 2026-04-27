@@ -5,23 +5,14 @@
 #include <algorithm>
 #include <set>
 #include <string>
+#include <stdexcept>
 #include "comm.h"
+#include <iostream>
 #include "C:/Program Files (x86)/Microsoft SDKs/MPI/Include/mpi.h"
-
-/*
-vertex calls send_message(...)
-message goes into message buffer
-later, framework synchronises buffers
-local messages stay local
-remote messages get marshalled into bytes
-MPI moves them
-destination worker unmarshalls them
-next superstep, destination vertex sees them in compute(...)
-*/
 
 extern int global_step_num;
 
-typedef int PartitionID; // alias
+typedef int PartitionID;
 typedef int VertexID;
 typedef int WorkerID;
 
@@ -31,7 +22,23 @@ struct BaseEdge;
 template<class MessageT, class HashT>
 class MessageBuffer;
 
-// Helper
+struct MeshValue {
+    float base_x;
+    float base_y;
+    float base_z;
+
+    float disp_x;
+    float disp_y;
+    float disp_z;
+
+    int anchor;
+};
+
+struct MeshMessage {
+    float dx;
+    float dy;
+    float dz;
+};
 
 template<class T>
 void insert_sorted(std::vector<T> &sorted, T &elem) {
@@ -48,9 +55,13 @@ typename std::vector<T>::iterator find_sorted_by_id(std::vector<T> &sorted, int 
     return std::lower_bound(sorted.begin(), sorted.end(), T(new_id));
 }
 
-class DefaultHash { // which partition a vertex belongs to
+class DefaultHash {
 public:
     PartitionID operator()(VertexID id, int num_partitions) {
+        if (num_partitions <= 0) {
+            throw std::runtime_error("DefaultHash: num_partitions must be > 0");
+        }
+
         return id % num_partitions;
     }
 };
@@ -172,64 +183,72 @@ private:
 
 template<class ValueT>
 struct BaseEdge {
-    BaseEdge(VertexID id, ValueT &v):target(id), value(v) {};
-    BaseEdge() {};
+    BaseEdge(VertexID id, ValueT& v) : target(id), value(v) {}
+    BaseEdge() {}
 
     VertexID target;
     ValueT value;
 
-    bool operator < (BaseEdge<ValueT> &rhs) {
+    bool operator<(const BaseEdge<ValueT>& rhs) const {
         return target < rhs.target;
     }
-    bool operator == (BaseEdge<ValueT> &rhs) {
+
+    bool operator==(const BaseEdge<ValueT>& rhs) const {
         return target == rhs.target;
     }
-    bool operator != (BaseEdge<ValueT> &rhs) {
+
+    bool operator!=(const BaseEdge<ValueT>& rhs) const {
         return target != rhs.target;
     }
 };
 
 template<>
 struct BaseEdge<void> {
-    BaseEdge(int id):target(id) {};
-    BaseEdge() {};
+    BaseEdge(int id) : target(id) {}
+    BaseEdge() : target(0) {}
 
     VertexID target;
 
-    bool operator < (BaseEdge<void> &rhs) {
+    bool operator<(const BaseEdge<void>& rhs) const {
         return target < rhs.target;
     }
-    bool operator == (BaseEdge<void> &rhs) {
+
+    bool operator==(const BaseEdge<void>& rhs) const {
         return target == rhs.target;
     }
-    bool operator != (BaseEdge<void> &rhs) {
+
+    bool operator!=(const BaseEdge<void>& rhs) const {
         return target != rhs.target;
     }
 };
 
-
-Marshall &operator << (Marshall &m, size_t i) {
+inline Marshall &operator << (Marshall &m, size_t i) {
     m.raw_bytes(&i, sizeof(size_t));
     return m;
 }
 
-Marshall &operator << (Marshall &m, int i) {
+inline Marshall &operator << (Marshall &m, int i) {
     m.raw_bytes(&i, sizeof(int));
     return m;
 }
 
-Marshall &operator << (Marshall &m, char c) {
-    m.raw_byte(c);
+inline Marshall &operator << (Marshall &m, float f) {
+    m.raw_bytes(&f, sizeof(float));
+    return m;
+}
+
+inline Unmarshall &operator >> (Unmarshall &m, float& f) {
+    f = *(float*)m.raw_bytes(sizeof(float));
     return m;
 }
 
 template<class T>
-Marshall &operator << (Marshall &m, T* p) {
+inline Marshall &operator << (Marshall &m, T* p) {
     return m << *p;
 }
 
 template<class T>
-Marshall &operator << (Marshall &m, std::vector<T> &v) {
+inline Marshall &operator << (Marshall &m, std::vector<T> &v) {
     m << v.size();
     for (typename std::vector<T>::iterator it = v.begin(); it != v.end(); ++it) {
         m << *it;
@@ -238,14 +257,14 @@ Marshall &operator << (Marshall &m, std::vector<T> &v) {
 }
 
 template<>
-Marshall &operator << (Marshall &m, std::vector<int> &v) {
+inline Marshall &operator << (Marshall &m, std::vector<int> &v) {
     m << v.size();
     m.raw_bytes(v.data(), v.size() * sizeof(int));
     return m;
 }
 
 template<class T>
-Marshall &operator << (Marshall &m, std::set<T> &v) {
+inline Marshall &operator << (Marshall &m, std::set<T> &v) {
     m << v.size();
     for (typename std::set<T>::iterator it = v.begin(); it != v.end(); ++it) {
         m << *it;
@@ -254,55 +273,49 @@ Marshall &operator << (Marshall &m, std::set<T> &v) {
 }
 
 template<class ValueT>
-Marshall &operator << (Marshall &m, BaseEdge<ValueT> &e) {
+inline Marshall &operator << (Marshall &m, BaseEdge<ValueT> &e) {
     m << e.target;
     m << e.value;
     return m;
 }
 
 template<>
-Marshall &operator << (Marshall &m, BaseEdge<void> &e) {
+inline Marshall &operator << (Marshall &m, BaseEdge<void> &e) {
     m << e.target;
     return m;
 }
 
 template<class ValueT>
-Unmarshall &operator >> (Unmarshall &m, BaseEdge<ValueT> &e) {
+inline Unmarshall &operator >> (Unmarshall &m, BaseEdge<ValueT> &e) {
     m >> e.target;
     m >> e.value;
     return m;
 }
 
-
-Unmarshall &operator >> (Unmarshall &m, size_t &i) {
+inline Unmarshall &operator >> (Unmarshall &m, size_t &i) {
     i = *(size_t*)m.raw_bytes(sizeof(size_t));
     return m;
 }
 
-Unmarshall &operator >> (Unmarshall &m, int &i) {
+inline Unmarshall &operator >> (Unmarshall &m, int &i) {
     i = *(int*)m.raw_bytes(sizeof(int));
     return m;
 }
 
-Unmarshall &operator >> (Unmarshall &m, char &c) {
-    c = m.raw_byte();
-    return m;
-}
-
 template<>
-Unmarshall &operator >> (Unmarshall &m, BaseEdge<void> &e) {
+inline Unmarshall &operator >> (Unmarshall &m, BaseEdge<void> &e) {
     m >> e.target;
     return m;
 }
 
 template<class T>
-Unmarshall &operator >> (Unmarshall &m, T* &p) {
+inline Unmarshall &operator >> (Unmarshall &m, T* &p) {
     p = new T;
     return m >> (*p);
 }
 
 template<class T>
-Unmarshall &operator >> (Unmarshall &m, std::vector<T> &v) {
+inline Unmarshall &operator >> (Unmarshall &m, std::vector<T> &v) {
     size_t size;
     m >> size;
     v.resize(size);
@@ -313,7 +326,7 @@ Unmarshall &operator >> (Unmarshall &m, std::vector<T> &v) {
 }
 
 template<>
-Unmarshall &operator >> (Unmarshall &m, std::vector<int> &v) {
+inline Unmarshall &operator >> (Unmarshall &m, std::vector<int> &v) {
     size_t size;
     m >> size;
     v.resize(size);
@@ -323,7 +336,7 @@ Unmarshall &operator >> (Unmarshall &m, std::vector<int> &v) {
 }
 
 template<class T>
-Unmarshall &operator >> (Unmarshall &m, std::set<T> &v) {
+inline Unmarshall &operator >> (Unmarshall &m, std::set<T> &v) {
     size_t size;
     m >> size;
     for (size_t i = 0; i < size; i++) {
@@ -331,6 +344,48 @@ Unmarshall &operator >> (Unmarshall &m, std::set<T> &v) {
         m >> tmp;
         v.insert(v.end(), tmp);
     }
+    return m;
+}
+
+inline Marshall& operator<<(Marshall& m, MeshMessage& msg) {
+    m << msg.dx;
+    m << msg.dy;
+    m << msg.dz;
+    return m;
+}
+
+inline Unmarshall& operator>>(Unmarshall& m, MeshMessage& msg) {
+    m >> msg.dx;
+    m >> msg.dy;
+    m >> msg.dz;
+    return m;
+}
+
+inline Marshall& operator<<(Marshall& m, MeshValue& v) {
+    m << v.base_x;
+    m << v.base_y;
+    m << v.base_z;
+
+    m << v.disp_x;
+    m << v.disp_y;
+    m << v.disp_z;
+
+    m << v.anchor;
+
+    return m;
+}
+
+inline Unmarshall& operator>>(Unmarshall& m, MeshValue& v) {
+    m >> v.base_x;
+    m >> v.base_y;
+    m >> v.base_z;
+
+    m >> v.disp_x;
+    m >> v.disp_y;
+    m >> v.disp_z;
+
+    m >> v.anchor;
+
     return m;
 }
 
@@ -365,6 +420,10 @@ public:
         return _id;
     }
 
+    const VertexID &id() const {
+        return _id;
+    }
+
     std::vector<BaseEdge<EdgeType> > &edges() {
         return _edges;
     }
@@ -372,24 +431,25 @@ public:
     void send_message(VertexID id, MessageType &msg) {
         ((MessageBuffer<MessageType, HashType>*)get_message_buffer())->add_message(id, msg);
     }
-
+   
     int step_num() {
         return global_step_num;
     }
+    
 
     AggregatorType &aggregator() {
         return *((AggregatorType*)_get_aggregator());
     }
 
-    bool operator < (BaseVertex &rhs){
+    bool operator < (const BaseVertex& rhs) const {
         return _id < rhs._id;
     }
 
-    bool operator == (BaseVertex &rhs) {
+    bool operator == (const BaseVertex& rhs) const {
         return _id == rhs._id;
     }
 
-    bool operator != (BaseVertex &rhs) {
+    bool operator != (const BaseVertex& rhs) const {
         return _id != rhs._id;
     }
 
@@ -564,13 +624,13 @@ class Partition {
     typedef typename VertexT::MessageType MessageType;
     typedef typename VertexT::HashType HashType;
 public:
-    friend Marshall &operator << (Marshall &m, Partition<VertexT> &p) {
+    friend inline Marshall &operator << (Marshall &m, Partition<VertexT> &p) {
         m << p._id;
         m << p._vertexes;
         return m;
     }
 
-    friend Unmarshall &operator >> (Unmarshall &m, Partition<VertexT> &p) {
+    friend inline Unmarshall &operator >> (Unmarshall &m, Partition<VertexT> &p) {
         m >> p._id;
         m >> p._vertexes;
         return m;
@@ -578,12 +638,12 @@ public:
 
     Partition() {}
     Partition(PartitionID i) :_id(i) {};
-    Partition(Partition &rhs) {
+    Partition(const Partition& rhs) {
         _id = rhs._id;
         _vertexes = rhs._vertexes;
     }
-      
-    Partition &operator = (Partition &rhs) {
+
+    Partition& operator=(const Partition& rhs) {
         if (this != &rhs) {
             _id = rhs._id;
             _vertexes = rhs._vertexes;
@@ -591,26 +651,30 @@ public:
         return *this;
     }
 
-    void merge_with(Partition &rhs) {
+    void merge_with(const Partition& rhs) {
         std::vector<VertexT> new_v(_vertexes.size() + rhs._vertexes.size());
         std::merge(_vertexes.begin(), _vertexes.end(), rhs._vertexes.begin(), rhs._vertexes.end(), new_v.begin());
         _vertexes.swap(new_v);
     }
 
-    bool operator < (Partition<VertexT> &rhs) { 
-        return _id < rhs._id; 
+    bool operator < (const Partition<VertexT>& rhs) const {
+        return _id < rhs._id;
     }
 
-    bool operator == (Partition<VertexT> &rhs) { 
-        return _id == rhs._id; 
+    bool operator == (const Partition<VertexT>& rhs) const {
+        return _id == rhs._id;
     }
 
-    bool operator != (Partition<VertexT> &rhs) { 
-        return _id != rhs._id; 
+    bool operator != (const Partition<VertexT>& rhs) const {
+        return _id != rhs._id;
     }
 
     PartitionID id() { 
         return _id; 
+    }
+
+    PartitionID id() const {
+        return _id;
     }
 
     std::vector<VertexT> &vertexes() {
@@ -629,7 +693,7 @@ public:
     }
 
     bool halt() {
-        return get_halt_count() == _vertexes.size();
+        return _vertexes.size() == get_halt_count();
     }
 
     void all_compute() {
@@ -724,23 +788,12 @@ private:
     std::vector<WorkerID>* partition_worker;
 };
 
+//---------------------------------------------------------------------------------------
 
-//------------------------
-// worker parameters
-struct WorkerParams {
-    int num_partitions;
-    std::string input_file;
-    std::string output_file;
-};
-
-//=======================
-// worker
-//
-template<class VertexT, class GraphLoaderT, class GraphDumperT>
+template<class VertexT, class GraphLoaderT>
 class Worker {
     typedef typename VertexT::MessageType MessageT;
     typedef typename VertexT::HashType HashT;
-    typedef typename VertexT::CombinerType CombinerT;
     typedef typename VertexT::AggregatorType AggregatorT;
 public:
     Worker() {
@@ -750,74 +803,86 @@ public:
         _set_aggregator(&_aggregator);
     }
 
-    ~Worker() {
-        worker_finalize();
+    std::vector<Partition<VertexT>>& local_partitions() {
+        return partitions;
     }
 
-    void run(WorkerParams &params) {
-        num_partitions = params.num_partitions;
-        input_file = params.input_file;
-        output_file = params.output_file;
-
-        assign_partitions();
-
-        GraphBuffer<VertexT> graph_buffer;
-        graph_buffer.set_num_partitions(num_partitions);
-        graph_buffer.set_pw(&partition_worker);
-        GraphLoaderT loader;
-        loader.set_id(id);
-        loader.set_buffer(&graph_buffer);
-        loader.load_graph(input_file);
-        graph_buffer.sync_graph();
-        partitions.swap(graph_buffer.my_partitions());
-        worker_barrier();
-
-        bool halt = false;
-        int step_num = 0;
-        while (!halt) {
-            do_step(step_num++);
-            halt = all_halt();
+    void run(int num_partitions) {
+        if (num_workers <= 0) {
+            throw std::runtime_error("Worker::run: num_workers must be > 0. Did you call init_pregel()?");
         }
-        worker_barrier();
-    }
-private:
-    void assign_partitions() {
+
+        if (num_partitions <= 0) {
+            throw std::runtime_error("Worker::run: num_partitions must be > 0.");
+        }
+
         partition_worker.resize(num_partitions);
         for (int i = 0; i < num_partitions; i++) {
             partition_worker[i] = i % num_workers;
         }
-    }
-    void do_step(int step_num) {
-        global_step_num = step_num;
-        halt_partition_count = 0;
-        _aggregator.reset();
+
         message_buffer.set_pw(&partition_worker);
         message_buffer.set_num_partitions(num_partitions);
 
-        for (typename std::vector<Partition<VertexT> >::iterator it = partitions.begin(); it != partitions.end(); it++) {
-            it->all_compute();
-            if (it->halt())
-                halt_partition_count++;
+        GraphBuffer<VertexT> graph_buffer;
+        graph_buffer.set_num_partitions(num_partitions);
+        graph_buffer.set_pw(&partition_worker);
+
+        GraphLoaderT loader;
+        loader.set_id(id);
+        loader.set_buffer(&graph_buffer);
+        loader.load_graph();
+
+        std::cout << "[rank " << get_worker_id() << "] before sync_graph\n";
+        graph_buffer.sync_graph();
+        std::cout << "[rank " << get_worker_id() << "] after sync_graph\n";
+        partitions.swap(graph_buffer.my_partitions());
+
+        int local_partition_count = static_cast<int>(partitions.size());
+        std::cout << "[rank " << get_worker_id() << "] before all_sum partition count\n";
+        int global_partition_count = all_sum(local_partition_count);
+        std::cout << "[rank " << get_worker_id() << "] after all_sum partition count\n";
+        std::cout << "[rank " << get_worker_id() << "] before barrier\n";
+        MPI_Barrier(MPI_COMM_WORLD);
+        std::cout << "[rank " << get_worker_id() << "] after barrier\n";
+
+        bool halt = false;
+        int step_num = 0;
+
+        while (!halt) {
+            global_step_num = step_num; // vertices can access
+
+            halt_partition_count = 0;
+            _aggregator.reset();
+
+            for (typename std::vector<Partition<VertexT> >::iterator it = partitions.begin(); it != partitions.end(); it++) {
+                it->all_compute();
+                if (it->halt()) {
+                    halt_partition_count++;
+                }
+            }
+
+            message_buffer.sync_messages();
+            _aggregator.all_aggregate(); // each worker has a local value, all_aggregate() combines them globally.
+
+            step_num++;
+
+            int all_halt_count = 0;
+            all_halt_count = all_sum(halt_partition_count); // each worker knows only its own halted partitions
+            if (all_halt_count == global_partition_count) {
+                halt = true;
+            }
         }
-
-        message_buffer.sync_messages();
-        _aggregator.all_aggregate();
+        MPI_Barrier(MPI_COMM_WORLD); // all workers finish the loop
     }
-    bool all_halt() {
-        int all_halt_count = 0;
-        all_halt_count = all_sum(halt_partition_count);
-        return all_halt_count == num_partitions;
-    }
-
+private:
     WorkerID id;
     int num_workers;
     int num_partitions;
-    std::string input_file;
-    std::string output_file;
     int halt_partition_count;
 
     std::vector<WorkerID> partition_worker;
     std::vector<Partition<VertexT> > partitions;
-    MessageBuffer<MessageT, HashT, CombinerT> message_buffer;
+    MessageBuffer<MessageT, HashT> message_buffer;
     AggregatorT _aggregator;
 };

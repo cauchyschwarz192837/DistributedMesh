@@ -22,18 +22,10 @@ void init_workers(int* argc, char*** argv ) {
 	MPI_Comm_rank(MPI_COMM_WORLD, &_my_rank);
 }
 
-void worker_finalize() {
-	MPI_Finalize();
-}
-
-void worker_barrier() {
-	MPI_Barrier(MPI_COMM_WORLD); // blocks until all workers reach the same point
-}
-
 int all_sum(int my_copy) { // every worker contributes one integer, and everyone gets back the sum across all workers
-	int tmp;
-	MPI_Allreduce((char*)(void*)&my_copy, (char*)(void*)&tmp, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-	return tmp;
+	int toRet = 0;
+	MPI_Allreduce(&my_copy, &toRet, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+	return toRet;
 }
 
 void pregel_send(void* buf, int size, int dst) { // send size bytes to destination worker dst
@@ -92,9 +84,11 @@ int global_halt_count = 0;
 void set_halt_count(int i) {
 	global_halt_count = i;
 }
+
 int get_halt_count() {
 	return global_halt_count;
 }
+
 void vote_for_halt() {
 	global_halt_count++;
 }
@@ -113,5 +107,5 @@ void* _get_aggregator() {
 
 void init_pregel(int argc, char** argv) {
         init_workers(&argc, &argv);
-        worker_barrier();
+		MPI_Barrier(MPI_COMM_WORLD);
 }
