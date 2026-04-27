@@ -1,5 +1,4 @@
 #pragma once
-
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
@@ -12,13 +11,11 @@
 
 extern int global_step_num;
 
-typedef int PartitionID;
+typedef int DivisionID;
 typedef int VertexID;
 typedef int WorkerID;
-
 template<class ValueT>
-struct BaseEdge;
-
+struct BEdge;
 template<class MessageT, class HashT>
 class MessageBuffer;
 
@@ -26,11 +23,9 @@ struct MeshValue {
     float base_x;
     float base_y;
     float base_z;
-
     float disp_x;
     float disp_y;
     float disp_z;
-
     int anchor;
 };
 
@@ -44,9 +39,9 @@ template<class T>
 void insert_sorted(std::vector<T> &sorted, T &elem) {
     typename std::vector<T>::iterator it = std::lower_bound(sorted.begin(), sorted.end(), elem);
     if(it == sorted.end() || *it != elem) {
-        sorted.insert(it, elem); // insert
+        sorted.insert(it, elem); // INSERT GO
     } else {
-        *it = elem; // replace
+        *it = elem; // REPLACE ITS
     }
 }
 
@@ -57,11 +52,10 @@ typename std::vector<T>::iterator find_sorted_by_id(std::vector<T> &sorted, int 
 
 class DefaultHash {
 public:
-    PartitionID operator()(VertexID id, int num_partitions) {
+    DivisionID operator()(VertexID id, int num_partitions) {
         if (num_partitions <= 0) {
             throw std::runtime_error("DefaultHash: num_partitions must be > 0");
         }
-
         return id % num_partitions;
     }
 };
@@ -73,7 +67,6 @@ class BaseCombiner {
 public:
 	void combine(MessageT &old, MessageT &new_msg) {};
 };
-
 
 template<class T>
 class BaseAggregator {
@@ -93,7 +86,6 @@ public:
 	void all_aggregate() {
 		int me = get_worker_id();
 		int np = get_num_workers();
-
 		if(me == 0) {
 			for(int i = 1; i < np; i++) {
 				T received = recv_data<T>(i);
@@ -122,11 +114,11 @@ public:
 //---------------------------------------------------------------------------------------------------------
 // Transport conversion
 
-class Marshall {
+class SerialMe {
 public:
-    Marshall() {}
-    Marshall(std::vector<char> b):buf(b) {};
-    Marshall(Marshall &r) {
+    SerialMe() {}
+    SerialMe(std::vector<char> b):buf(b) {};
+    SerialMe(SerialMe &r) {
         *this = r;
     }
 
@@ -149,15 +141,14 @@ private:
     std::vector<char> buf;
 };
 
-class Unmarshall { // refactor
+class UnSerialMe { // refactor
 public:
-    Unmarshall():index(0) {};
-    Unmarshall(std::vector<char> b):buf(b), index(0) {};
-    Unmarshall(Unmarshall &r) {
+    UnSerialMe():index(0) {};
+    UnSerialMe(std::vector<char> b):buf(b), index(0) {};
+    UnSerialMe(UnSerialMe &r) {
         *this = r;
     }
-
-    Unmarshall(char* b, size_t s) : buf(b, b + s), index(0) {}
+    UnSerialMe(char* b, size_t s) : buf(b, b + s), index(0) {}
 
     size_t size() {
         return buf.size();
@@ -182,73 +173,72 @@ private:
 };
 
 template<class ValueT>
-struct BaseEdge {
-    BaseEdge(VertexID id, ValueT& v) : target(id), value(v) {}
-    BaseEdge() {}
-
+struct BEdge {
+    BEdge(VertexID id, ValueT& v) : target(id), value(v) {}
+    BEdge() {}
     VertexID target;
     ValueT value;
 
-    bool operator<(const BaseEdge<ValueT>& rhs) const {
+    bool operator<(const BEdge<ValueT>& rhs) const {
         return target < rhs.target;
     }
 
-    bool operator==(const BaseEdge<ValueT>& rhs) const {
+    bool operator==(const BEdge<ValueT>& rhs) const {
         return target == rhs.target;
     }
 
-    bool operator!=(const BaseEdge<ValueT>& rhs) const {
+    bool operator!=(const BEdge<ValueT>& rhs) const {
         return target != rhs.target;
     }
 };
 
 template<>
-struct BaseEdge<void> {
-    BaseEdge(int id) : target(id) {}
-    BaseEdge() : target(0) {}
+struct BEdge<void> {
+    BEdge(int id) : target(id) {}
+    BEdge() : target(0) {}
 
     VertexID target;
 
-    bool operator<(const BaseEdge<void>& rhs) const {
+    bool operator<(const BEdge<void>& rhs) const {
         return target < rhs.target;
     }
 
-    bool operator==(const BaseEdge<void>& rhs) const {
+    bool operator==(const BEdge<void>& rhs) const {
         return target == rhs.target;
     }
 
-    bool operator!=(const BaseEdge<void>& rhs) const {
+    bool operator!=(const BEdge<void>& rhs) const {
         return target != rhs.target;
     }
 };
 
-inline Marshall &operator << (Marshall &m, size_t i) {
+inline SerialMe &operator << (SerialMe &m, size_t i) {
     m.raw_bytes(&i, sizeof(size_t));
     return m;
 }
 
-inline Marshall &operator << (Marshall &m, int i) {
+inline SerialMe &operator << (SerialMe &m, int i) {
     m.raw_bytes(&i, sizeof(int));
     return m;
 }
 
-inline Marshall &operator << (Marshall &m, float f) {
+inline SerialMe &operator << (SerialMe &m, float f) {
     m.raw_bytes(&f, sizeof(float));
     return m;
 }
 
-inline Unmarshall &operator >> (Unmarshall &m, float& f) {
+inline UnSerialMe &operator >> (UnSerialMe &m, float& f) {
     f = *(float*)m.raw_bytes(sizeof(float));
     return m;
 }
 
 template<class T>
-inline Marshall &operator << (Marshall &m, T* p) {
+inline SerialMe &operator << (SerialMe &m, T* p) {
     return m << *p;
 }
 
 template<class T>
-inline Marshall &operator << (Marshall &m, std::vector<T> &v) {
+inline SerialMe &operator << (SerialMe &m, std::vector<T> &v) {
     m << v.size();
     for (typename std::vector<T>::iterator it = v.begin(); it != v.end(); ++it) {
         m << *it;
@@ -257,14 +247,14 @@ inline Marshall &operator << (Marshall &m, std::vector<T> &v) {
 }
 
 template<>
-inline Marshall &operator << (Marshall &m, std::vector<int> &v) {
+inline SerialMe &operator << (SerialMe &m, std::vector<int> &v) {
     m << v.size();
     m.raw_bytes(v.data(), v.size() * sizeof(int));
     return m;
 }
 
 template<class T>
-inline Marshall &operator << (Marshall &m, std::set<T> &v) {
+inline SerialMe &operator << (SerialMe &m, std::set<T> &v) {
     m << v.size();
     for (typename std::set<T>::iterator it = v.begin(); it != v.end(); ++it) {
         m << *it;
@@ -273,49 +263,49 @@ inline Marshall &operator << (Marshall &m, std::set<T> &v) {
 }
 
 template<class ValueT>
-inline Marshall &operator << (Marshall &m, BaseEdge<ValueT> &e) {
+inline SerialMe &operator << (SerialMe &m, BEdge<ValueT> &e) {
     m << e.target;
     m << e.value;
     return m;
 }
 
 template<>
-inline Marshall &operator << (Marshall &m, BaseEdge<void> &e) {
+inline SerialMe &operator << (SerialMe &m, BEdge<void> &e) {
     m << e.target;
     return m;
 }
 
 template<class ValueT>
-inline Unmarshall &operator >> (Unmarshall &m, BaseEdge<ValueT> &e) {
+inline UnSerialMe &operator >> (UnSerialMe &m, BEdge<ValueT> &e) {
     m >> e.target;
     m >> e.value;
     return m;
 }
 
-inline Unmarshall &operator >> (Unmarshall &m, size_t &i) {
+inline UnSerialMe &operator >> (UnSerialMe &m, size_t &i) {
     i = *(size_t*)m.raw_bytes(sizeof(size_t));
     return m;
 }
 
-inline Unmarshall &operator >> (Unmarshall &m, int &i) {
+inline UnSerialMe &operator >> (UnSerialMe &m, int &i) {
     i = *(int*)m.raw_bytes(sizeof(int));
     return m;
 }
 
 template<>
-inline Unmarshall &operator >> (Unmarshall &m, BaseEdge<void> &e) {
+inline UnSerialMe &operator >> (UnSerialMe &m, BEdge<void> &e) {
     m >> e.target;
     return m;
 }
 
 template<class T>
-inline Unmarshall &operator >> (Unmarshall &m, T* &p) {
+inline UnSerialMe &operator >> (UnSerialMe &m, T* &p) {
     p = new T;
     return m >> (*p);
 }
 
 template<class T>
-inline Unmarshall &operator >> (Unmarshall &m, std::vector<T> &v) {
+inline UnSerialMe &operator >> (UnSerialMe &m, std::vector<T> &v) {
     size_t size;
     m >> size;
     v.resize(size);
@@ -326,7 +316,7 @@ inline Unmarshall &operator >> (Unmarshall &m, std::vector<T> &v) {
 }
 
 template<>
-inline Unmarshall &operator >> (Unmarshall &m, std::vector<int> &v) {
+inline UnSerialMe &operator >> (UnSerialMe &m, std::vector<int> &v) {
     size_t size;
     m >> size;
     v.resize(size);
@@ -336,7 +326,7 @@ inline Unmarshall &operator >> (Unmarshall &m, std::vector<int> &v) {
 }
 
 template<class T>
-inline Unmarshall &operator >> (Unmarshall &m, std::set<T> &v) {
+inline UnSerialMe &operator >> (UnSerialMe &m, std::set<T> &v) {
     size_t size;
     m >> size;
     for (size_t i = 0; i < size; i++) {
@@ -347,70 +337,64 @@ inline Unmarshall &operator >> (Unmarshall &m, std::set<T> &v) {
     return m;
 }
 
-inline Marshall& operator<<(Marshall& m, MeshMessage& msg) {
+inline SerialMe& operator<<(SerialMe& m, MeshMessage& msg) {
     m << msg.dx;
     m << msg.dy;
     m << msg.dz;
     return m;
 }
 
-inline Unmarshall& operator>>(Unmarshall& m, MeshMessage& msg) {
+inline UnSerialMe& operator>>(UnSerialMe& m, MeshMessage& msg) {
     m >> msg.dx;
     m >> msg.dy;
     m >> msg.dz;
     return m;
 }
 
-inline Marshall& operator<<(Marshall& m, MeshValue& v) {
+inline SerialMe& operator<<(SerialMe& m, MeshValue& v) {
     m << v.base_x;
     m << v.base_y;
     m << v.base_z;
-
     m << v.disp_x;
     m << v.disp_y;
     m << v.disp_z;
-
     m << v.anchor;
-
     return m;
 }
 
-inline Unmarshall& operator>>(Unmarshall& m, MeshValue& v) {
+inline UnSerialMe& operator>>(UnSerialMe& m, MeshValue& v) {
     m >> v.base_x;
     m >> v.base_y;
     m >> v.base_z;
-
     m >> v.disp_x;
     m >> v.disp_y;
     m >> v.disp_z;
-
     m >> v.anchor;
-
     return m;
 }
 
 template<class ValueType, class EdgeType, class MessageType, class HashType = DefaultHash, class CombinerType = BaseCombiner<MessageType>, class AggregatorType = BaseAggregator<void> >
-class BaseVertex {
+class BVertex {
 public:
-    BaseVertex() {};
-    BaseVertex(VertexID i):_id(i) {};
-    BaseVertex(VertexID i, ValueType &v):_id(i), _value(v) {};
+    BVertex() {};
+    BVertex(VertexID i):_id(i) {};
+    BVertex(VertexID i, ValueType &v):_id(i), _value(v) {};
 
-    friend Marshall &operator << (Marshall &m, BaseVertex &v) {
+    friend SerialMe &operator << (SerialMe &m, BVertex &v) {
         m << v._id;
         m << v._value;
         m << v._edges;
         return m;
     }
 
-    friend Unmarshall &operator >> (Unmarshall &m, BaseVertex &v) {
+    friend UnSerialMe &operator >> (UnSerialMe &m, BVertex &v) {
         m >> v._id;
         m >> v._value;
         m >> v._edges;
         return m;
     }
 
-    void compute(std::vector<MessageType> &messages); // MAIN
+    void compute(std::vector<MessageType> &messages); // MAIN mE!
 
     ValueType &value() {
         return _value;
@@ -424,7 +408,7 @@ public:
         return _id;
     }
 
-    std::vector<BaseEdge<EdgeType> > &edges() {
+    std::vector<BEdge<EdgeType> > &edges() {
         return _edges;
     }
 
@@ -436,48 +420,46 @@ public:
         return global_step_num;
     }
     
-
     AggregatorType &aggregator() {
         return *((AggregatorType*)_get_aggregator());
     }
 
-    bool operator < (const BaseVertex& rhs) const {
+    bool operator < (const BVertex& rhs) const {
         return _id < rhs._id;
     }
 
-    bool operator == (const BaseVertex& rhs) const {
+    bool operator == (const BVertex& rhs) const {
         return _id == rhs._id;
     }
 
-    bool operator != (const BaseVertex& rhs) const {
+    bool operator != (const BVertex& rhs) const {
         return _id != rhs._id;
     }
 
-    void add_edge(BaseEdge<EdgeType> &edge) {
+    void add_edge(BEdge<EdgeType> &edge) {
         insert_sorted(_edges, edge);
     }
 
 private:
     VertexID _id;
     ValueType _value;
-    std::vector<BaseEdge<EdgeType> > _edges;
+    std::vector<BEdge<EdgeType> > _edges;
 };
 
 template<class MessageT>
-struct IDMessage {
+struct IDMsg {
     VertexID id;
     std::vector<MessageT> messages;
+    IDMsg() : id(0) {}
+    IDMsg(VertexID i, std::vector<MessageT>* m) : id(i), messages(*m) {}
 
-    IDMessage() : id(0) {}
-    IDMessage(VertexID i, std::vector<MessageT>* m) : id(i), messages(*m) {}
-
-    friend Marshall &operator << (Marshall &m, IDMessage<MessageT> &idm) {
+    friend SerialMe &operator << (SerialMe &m, IDMsg<MessageT> &idm) {
         m << idm.id;
         m << idm.messages;
         return m;
     }
 
-    friend Unmarshall &operator >> (Unmarshall &m, IDMessage<MessageT> &idm) {
+    friend UnSerialMe &operator >> (UnSerialMe &m, IDMsg<MessageT> &idm) {
         m >> idm.id;
         m >> idm.messages;
         return m;
@@ -500,8 +482,8 @@ public:
     look at every outgoing destination vertex in out_messages
     figure out which worker owns that vertex
     if it is local, move messages straight into in_messages
-    if it is remote, put them into that worker’s send bucket
-    call all_to_all
+    if it is remote, put them into that worker's send bucket
+    call bigExchange
     take received remote buckets and append them into in_messages
     clear out_messages
     */
@@ -512,29 +494,28 @@ public:
 
         in_messages.clear(); // throw away previous round's received messages, build new inbox
 
-        std::vector<std::vector<IDMessage<MessageT> > > to_exchange(np); // each worker has one vector of IDMessage
+        std::vector<std::vector<IDMsg<MessageT> > > to_exchange(np); // each worker has one vector of IDMsg
         for(typename std::unordered_map<VertexID, std::vector<MessageT> >::iterator it = out_messages.begin(); it != out_messages.end(); it++) {
             int vid = it->first;
             int wid = vertex_worker(vid);
-
             if(wid == me) {
                 // my own message, no network exchange needed, just add to in_messages
                 in_messages[vid].swap(it->second);
             }
             else {
-                to_exchange[wid].push_back(IDMessage<MessageT>(vid, &(it->second)));
+                to_exchange[wid].push_back(IDMsg<MessageT>(vid, &(it->second)));
             }
         }
 
-        all_to_all(to_exchange); // NETWORK EXCHANGE
+        bigExchange(to_exchange); // NETWORK EXCHANGE
 
         for(int i = 0; i < np; i++) {
             if(i == me) {
                 continue;
             }
-            std::vector<IDMessage<MessageT> > &messages = to_exchange[i];
+            std::vector<IDMsg<MessageT> > &messages = to_exchange[i];
             for(int j = 0; j < to_exchange[i].size(); j++) {
-                IDMessage<MessageT> &idm = messages[j];
+                IDMsg<MessageT> &idm = messages[j];
                 std::vector<MessageT> &local_m = in_messages[idm.id];
                 local_m.insert(local_m.end(), idm.messages.begin(), idm.messages.end());
             }
@@ -551,7 +532,7 @@ public:
     }
 
     int vertex_worker(VertexID id) { // which worker should get it
-        return (*partition_worker)[hash(id, num_partitions)]; // look up which worker owns that partition
+        return (*partition_worker)[hash(id, num_partitions)]; // look up which worker owns that Division
     }
 private:
     HashT hash;
@@ -562,34 +543,33 @@ private:
 };
 
 /*
-serialize to_exchange[partner] into a Marshall
+serialize to_exchange[partner] into a SerialMe
 send it
-receive partner’s bytes into Unmarshall
-reconstruct the object back into to_exchange[partner]
+receive partner's bytes into UnSerialMe
+reconstruct object back into to_exchange[partner]
 */
 
 template<class T>
-void all_to_all(std::vector<T> &to_exchange) {
+void bigExchange(std::vector<T> &to_exchange) {
 	int np = get_num_workers();
 	int me = get_worker_id();
 
 	for(int i = 0; i < np; i++) {
 		int partner = (i - me + np) % np; // circular
-
 		if(me != partner) {
 			if(me < partner) { // note order send receive, OVERWRITE!!!
-				Marshall m;
+				SerialMe m;
 				m << to_exchange[partner];
 				send_marshall(m, partner);
 
-				Unmarshall um = recv_unmarshall(partner);
+				UnSerialMe um = recv_unmarshall(partner);
 				um >> to_exchange[partner];
 			} else {
-				Unmarshall um = recv_unmarshall(partner);
+				UnSerialMe um = recv_unmarshall(partner);
 				T received;
 				um >> received;
 
-				Marshall m;
+				SerialMe m;
 				m << to_exchange[partner];
 				send_marshall(m, partner);
 
@@ -601,14 +581,14 @@ void all_to_all(std::vector<T> &to_exchange) {
 
 template<class T>
 void send_data(const T &data, int dst) {
-	Marshall m;
+	SerialMe m;
 	m << data;
 	send_marshall(m, dst);
 }
 
 template<class T>
 T recv_data(int src) {
-	Unmarshall um = recv_unmarshall(src);
+	UnSerialMe um = recv_unmarshall(src);
 	T data;
 	um >> data;
 	return data;
@@ -618,32 +598,32 @@ T recv_data(int src) {
 // BUILD GRAPH //!TODO
 
 template<class VertexT>
-class Partition {
+class Division {
     typedef typename VertexT::ValueType ValueType;
     typedef typename VertexT::EdgeType EdgeType;
     typedef typename VertexT::MessageType MessageType;
     typedef typename VertexT::HashType HashType;
 public:
-    friend inline Marshall &operator << (Marshall &m, Partition<VertexT> &p) {
+    friend inline SerialMe &operator << (SerialMe &m, Division<VertexT> &p) {
         m << p._id;
         m << p._vertexes;
         return m;
     }
 
-    friend inline Unmarshall &operator >> (Unmarshall &m, Partition<VertexT> &p) {
+    friend inline UnSerialMe &operator >> (UnSerialMe &m, Division<VertexT> &p) {
         m >> p._id;
         m >> p._vertexes;
         return m;
     }
 
-    Partition() {}
-    Partition(PartitionID i) :_id(i) {};
-    Partition(const Partition& rhs) {
+    Division() {}
+    Division(DivisionID i) :_id(i) {};
+    Division(const Division& rhs) {
         _id = rhs._id;
         _vertexes = rhs._vertexes;
     }
 
-    Partition& operator=(const Partition& rhs) {
+    Division& operator=(const Division& rhs) {
         if (this != &rhs) {
             _id = rhs._id;
             _vertexes = rhs._vertexes;
@@ -651,29 +631,29 @@ public:
         return *this;
     }
 
-    void merge_with(const Partition& rhs) {
+    void merge_with(const Division& rhs) {
         std::vector<VertexT> new_v(_vertexes.size() + rhs._vertexes.size());
         std::merge(_vertexes.begin(), _vertexes.end(), rhs._vertexes.begin(), rhs._vertexes.end(), new_v.begin());
         _vertexes.swap(new_v);
     }
 
-    bool operator < (const Partition<VertexT>& rhs) const {
+    bool operator < (const Division<VertexT>& rhs) const {
         return _id < rhs._id;
     }
 
-    bool operator == (const Partition<VertexT>& rhs) const {
+    bool operator == (const Division<VertexT>& rhs) const {
         return _id == rhs._id;
     }
 
-    bool operator != (const Partition<VertexT>& rhs) const {
+    bool operator != (const Division<VertexT>& rhs) const {
         return _id != rhs._id;
     }
 
-    PartitionID id() { 
+    DivisionID id() { 
         return _id; 
     }
 
-    PartitionID id() const {
+    DivisionID id() const {
         return _id;
     }
 
@@ -686,9 +666,8 @@ public:
         insert_sorted(_vertexes, new_vertex);
     }
 
-    void add_edge(VertexID start, BaseEdge<EdgeType> &e) {
+    void add_edge(VertexID start, BEdge<EdgeType> &e) {
         typename std::vector<VertexT>::iterator it = find_sorted_by_id(_vertexes, start);
-        // assert(it->id() == start);
         it->add_edge(e);
     }
 
@@ -707,7 +686,7 @@ public:
         _vertexes.clear();
     }
 private:
-    PartitionID _id;
+    DivisionID _id;
     std::vector<VertexT> _vertexes;
 };
 
@@ -719,27 +698,25 @@ class GraphBuffer {
 public:
     void add_vertex(VertexID id, VertexT::ValueType &v) {
         int part_id = hash(id, num_partitions);
-        Partition<VertexT> new_p(part_id);
-        typename std::vector<Partition<VertexT> >::iterator it = lower_bound(all_partitions.begin(), all_partitions.end(), new_p);
+        Division<VertexT> new_p(part_id);
+        typename std::vector<Division<VertexT> >::iterator it = lower_bound(all_partitions.begin(), all_partitions.end(), new_p);
         if (it == all_partitions.end() || *it != new_p) {
             it = all_partitions.insert(it, new_p);
         }
         it->add_vertex(id, v);
     }
 
-    void add_edge(VertexID src, BaseEdge<EdgeType> &e) {
+    void add_edge(VertexID src, BEdge<EdgeType> &e) {
         int part_id = hash(src, num_partitions);
-        typename std::vector<Partition<VertexT> >::iterator it = find_sorted_by_id(all_partitions, part_id);
-        // assert(it->id() == part_id);
+        typename std::vector<Division<VertexT> >::iterator it = find_sorted_by_id(all_partitions, part_id);
         it->add_edge(src, e);
     }
 
     void sync_graph() {
         int me = get_worker_id();
         int np = get_num_workers();
-
-        std::vector<std::vector<Partition<VertexT>* > > to_exchange(np);
-        for(typename std::vector<Partition<VertexT> >::iterator it = all_partitions.begin(); it != all_partitions.end(); it++) {
+        std::vector<std::vector<Division<VertexT>* > > to_exchange(np);
+        for(typename std::vector<Division<VertexT> >::iterator it = all_partitions.begin(); it != all_partitions.end(); it++) {
             int wid = (*partition_worker)[it->id()];
             if(wid == me) {
                 _my_partitions.push_back(*it);
@@ -749,16 +726,16 @@ public:
             }
         }
 
-        all_to_all(to_exchange);
+        bigExchange(to_exchange);
 
         for(int i = 0; i < np; i++) {
             if(i == me) {
                 continue;
             }
-            std::vector<Partition<VertexT>*> &parts = to_exchange[i];
+            std::vector<Division<VertexT>*> &parts = to_exchange[i];
             for(int j = 0; j < parts.size(); j++) {
-                Partition<VertexT> &p = *(parts[j]);
-                typename std::vector<Partition<VertexT> >::iterator it = lower_bound(_my_partitions.begin(), _my_partitions.end(), p);
+                Division<VertexT> &p = *(parts[j]);
+                typename std::vector<Division<VertexT> >::iterator it = lower_bound(_my_partitions.begin(), _my_partitions.end(), p);
                 if (it != _my_partitions.end() && *it == p) {
                     it->merge_with(p);
                 } else {
@@ -769,7 +746,7 @@ public:
         all_partitions.clear();
     };
 
-    std::vector<Partition<VertexT> > &my_partitions() {
+    std::vector<Division<VertexT> > &my_partitions() {
         return _my_partitions; 
     }
 
@@ -783,8 +760,8 @@ public:
 private:
     VertexT::HashType hash;
     int num_partitions;
-    std::vector<Partition<VertexT> > _my_partitions;
-    std::vector<Partition<VertexT> > all_partitions;
+    std::vector<Division<VertexT> > _my_partitions;
+    std::vector<Division<VertexT> > all_partitions;
     std::vector<WorkerID>* partition_worker;
 };
 
@@ -803,7 +780,7 @@ public:
         _set_aggregator(&_aggregator);
     }
 
-    std::vector<Partition<VertexT>>& local_partitions() {
+    std::vector<Division<VertexT>>& local_partitions() {
         return partitions;
     }
 
@@ -820,14 +797,13 @@ public:
         for (int i = 0; i < num_partitions; i++) {
             partition_worker[i] = i % num_workers;
         }
-
+        
         message_buffer.set_pw(&partition_worker);
         message_buffer.set_num_partitions(num_partitions);
 
         GraphBuffer<VertexT> graph_buffer;
         graph_buffer.set_num_partitions(num_partitions);
         graph_buffer.set_pw(&partition_worker);
-
         GraphLoaderT loader;
         loader.set_id(id);
         loader.set_buffer(&graph_buffer);
@@ -839,9 +815,9 @@ public:
         partitions.swap(graph_buffer.my_partitions());
 
         int local_partition_count = static_cast<int>(partitions.size());
-        std::cout << "[rank " << get_worker_id() << "] before all_sum partition count\n";
+        std::cout << "[rank " << get_worker_id() << "] before all_sum Division count\n";
         int global_partition_count = all_sum(local_partition_count);
-        std::cout << "[rank " << get_worker_id() << "] after all_sum partition count\n";
+        std::cout << "[rank " << get_worker_id() << "] after all_sum Division count\n";
         std::cout << "[rank " << get_worker_id() << "] before barrier\n";
         MPI_Barrier(MPI_COMM_WORLD);
         std::cout << "[rank " << get_worker_id() << "] after barrier\n";
@@ -851,11 +827,10 @@ public:
 
         while (!halt) {
             global_step_num = step_num; // vertices can access
-
             halt_partition_count = 0;
             _aggregator.reset();
 
-            for (typename std::vector<Partition<VertexT> >::iterator it = partitions.begin(); it != partitions.end(); it++) {
+            for (typename std::vector<Division<VertexT> >::iterator it = partitions.begin(); it != partitions.end(); it++) {
                 it->all_compute();
                 if (it->halt()) {
                     halt_partition_count++;
@@ -864,7 +839,6 @@ public:
 
             message_buffer.sync_messages();
             _aggregator.all_aggregate(); // each worker has a local value, all_aggregate() combines them globally.
-
             step_num++;
 
             int all_halt_count = 0;
@@ -880,9 +854,8 @@ private:
     int num_workers;
     int num_partitions;
     int halt_partition_count;
-
     std::vector<WorkerID> partition_worker;
-    std::vector<Partition<VertexT> > partitions;
+    std::vector<Division<VertexT> > partitions;
     MessageBuffer<MessageT, HashT> message_buffer;
     AggregatorT _aggregator;
 };

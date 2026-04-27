@@ -36,7 +36,7 @@ void pregel_recv(void* buf, int size, int src) { // receive size bytes from sour
 	MPI_Recv(static_cast<char*>(buf), size, MPI_CHAR, src, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 }
 
-void send_marshall(Marshall &m, int dst) {
+void send_marshall(SerialMe &m, int dst) {
 	size_t size = m.size();
 	pregel_send(&size, sizeof(size_t), dst);
 	pregel_send(m.get_buf(), m.size(), dst); // send the size and the actual buffer
@@ -46,17 +46,17 @@ void send_marshall(Marshall &m, int dst) {
 receive the size
 allocate a byte buffer of that size
 receive the actual bytes
-wrap them in an Unmarshall
+wrap them in an UnSerialMe
 */
 
-Unmarshall recv_unmarshall(int src) {
+UnSerialMe recv_unmarshall(int src) {
     size_t size;
     pregel_recv(&size, sizeof(size_t), src);
 
     std::vector<char> buf(size);
     pregel_recv(buf.data(), static_cast<int>(size), src);
 
-    return Unmarshall(buf); // declared constructor
+    return UnSerialMe(buf); // declared constructor
 }
 
 void set_message_buffer(void* mb) {

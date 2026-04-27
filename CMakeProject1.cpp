@@ -1,7 +1,6 @@
 ﻿#define TINYOBJLOADER_DISABLE_FAST_FLOAT
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
-
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
@@ -19,28 +18,20 @@
 #include <filesystem>
 #include <set>
 #include "main.h"
-
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-/*
+/* QUICK NOETS!!!!!
 GLFW creates the window,
 Context opens Vulkan globally,
 Instance starts a Vulkan session,
 PhysicalDevice chooses the GPU,
 Device opens that GPU for use,
-graphicsQueue gives you a channel to submit GPU work.
-The physical device exposes queue families (hardware capabilities), and when you create a logical device you request queues from those families
+graphicsQueue gives me a channel to submit GPU work.
+The physical device exposes queue families (hardware capabilities), and when I create logical device you request queues from those families
 */
-
-// GPUs can execute different kinds of workloads
-// graphics rendering
-// compute shaders
-// memory transfer
-// video encode / decode
-// Hardware often has separate engines for these tasks
 
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
 
@@ -50,7 +41,7 @@ The physical device exposes queue families (hardware capabilities), and when you
 import vulkan_hpp;
 #endif
 
-#define GLFW_INCLUDE_VULKAN        // REQUIRED only for GLFW CreateWindowSurface.
+#define GLFW_INCLUDE_VULKAN        // REQUIRED only for GLFW CreateWindowSurface
 #include <GLFW/glfw3.h>
 
 constexpr uint32_t WIDTH = 800;  // measured in screen coordinates, but swap chain extent must be specified in pixels, Vulkan works with pixels
@@ -64,7 +55,7 @@ constexpr bool enableValidationLayers = false;
 constexpr bool enableValidationLayers = true;
 #endif
 
-struct UniformBufferObject { // a container of matrices we send from CPU → GPU (shader) every frame, global data shared across all vertices
+struct UniformBufferObject { // a container of matrices we send from CPU to GPU (shader) every frame, global data shared across all vertices
     glm::mat4 model;
     glm::mat4 view;
     glm::mat4 proj;
@@ -130,7 +121,7 @@ private:
     vk::raii::Context context;  // global Vulkan entry point
     vk::raii::Instance instance = nullptr;  // Vulkan session
     vk::raii::PhysicalDevice physicalDevice = nullptr;
-    vk::raii::Device device = nullptr;  // actual usable connection to that GPU
+    vk::raii::Device device = nullptr;  // actual useable connection to that GPU
     vk::PhysicalDeviceFeatures deviceFeatures;  // these are retrieved from device, so no raii
     vk::Queue queue = nullptr;
     uint32_t queueIndex = ~0u;
@@ -186,7 +177,6 @@ private:
 
     bool isDragging = false;
     int selectedVertex = -1;
-
     double mouseX = 0.0;
     double mouseY = 0.0;
 
@@ -203,32 +193,24 @@ private:
         glm::vec3 dir;
     };
 
-    // ---------------- MESSAGE PASSING DRAG STATE ----------------
-
+    // MESSAGE PASSING GUYS!!!!!!!!!!!!! TODO, CHECK!!!!!!!!!!!!!!!!!!!!!!
     // Current cursor displacement from the drag start point
-    glm::vec3 lastDragDelta{ 0.0f, 0.0f, 0.0f }; // initial
-
+    glm::vec3 lastDragDelta{ 0.0f, 0.0f, 0.0f };
     // Original position of every mesh vertex before this drag started
     std::vector<glm::vec3> preDragAllPositions;
-
-    // Mesh adjacency graph.
+    // Mesh adjacency graph
     // meshNeighbors[i] = list of vertices connected to vertex i
     std::vector<std::vector<int>> meshNeighbors;
-
-    // Current propagated displacement for every vertex.
+    // Current propagated displacement for every vertex
     std::vector<glm::vec3> displacement;
-
-    // Temporary array used during one message-passing update.
+    // Temporary array used during 1 message-passing update
     std::vector<glm::vec3> nextDisplacement;
-
-    // isAnchor[i] = 1 means vertex i is directly controlled by cursor drag.
+    // isAnchor[i] = 1 means vertex i is directly controlled by cursor drag
     std::vector<int> isAnchor;
-
-    // True only during an active drag.
+    // True only during active drag
     bool pregelDragActive = false;
 
     //-------------------------------------------------------------------------------------
-
 
     uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) { // choose the correct GPU memory type index for your buffer allocation
         vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice.getMemoryProperties(); // get all memory types
@@ -249,7 +231,6 @@ private:
 
     void createUniformBuffer() {
         vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
-
         createBuffer(
             bufferSize,
             vk::BufferUsageFlagBits::eUniformBuffer,
@@ -262,15 +243,12 @@ private:
 
     UniformBufferObject buildCurrentUBO() const {
         UniformBufferObject ubo{};
-
         ubo.model = glm::mat4(1.0f);
-
         ubo.view = glm::lookAt(
             glm::vec3(0.0f, 0.0f, 3.0f),
             glm::vec3(0.0f, 0.0f, 0.0f),
             glm::vec3(0.0f, 1.0f, 0.0f)
         );
-
         ubo.proj = glm::perspective(
             glm::radians(45.0f),
             swapChainExtent.width / (float)swapChainExtent.height,
@@ -284,7 +262,6 @@ private:
 
     void updateUniformBuffer() {
         UniformBufferObject ubo = buildCurrentUBO();
-
         void* data = uniformBufferMemory.mapMemory(0, sizeof(ubo));
         memcpy(data, &ubo, sizeof(ubo));
         uniformBufferMemory.unmapMemory();
@@ -341,7 +318,6 @@ private:
         glm::vec3& hitPoint
     ) const {
         float denom = glm::dot(ray.dir, planeNormal);
-
         if (glm::abs(denom) < 1e-6f) {
             return false;
         }
@@ -360,7 +336,7 @@ private:
         draggedVertexGroup.clear();
         draggedVertexOriginalPositions.clear();
 
-        float radius = 0.1f;   // tune this
+        float radius = 0.1f;   // TUNE THIS ARBITRARY!!!!!
 
         for (int i = 0; i < static_cast<int>(vertices.size()); ++i) {
             if (glm::length(vertices[i].pos - seedPos) < radius) {
@@ -389,7 +365,7 @@ private:
             .sharingMode = vk::SharingMode::eExclusive
         };
 
-        buffer = vk::raii::Buffer(device, bufferInfo);  // You created an empty box with a label on it, not attached to memory yet
+        buffer = vk::raii::Buffer(device, bufferInfo);  // created an empty box with a label on it, not attached to memory yet
 
         vk::MemoryRequirements memRequirements = buffer.getMemoryRequirements(); // how much memory do I need
 
@@ -403,9 +379,7 @@ private:
 
         /*
         vk::Buffer
-            ↓
             bound to
-            ↓
             vk::DeviceMemory
         Now the GPU can:
         read from it
@@ -1266,9 +1240,7 @@ private:
         for each index, fetch the corresponding vertex from the bound vertex buffer
         assemble triangles
         rasterise them
-        */
 
-        /*
         vertexCount: Even though we don’t have a vertex buffer, we technically still have 3 vertices to draw. "PROCESS 3 VERTICES"
         instanceCount : Used for instanced rendering, use 1 if you’re not doing that. "DRAW THIS ONCE"
         firstVertex : Used as an offset into the vertex buffer, defines the lowest value of SV_VertexId. "START VERTEX IDS FROM 0"
@@ -1282,10 +1254,10 @@ private:
             imageIndex,
             vk::ImageLayout::eColorAttachmentOptimal,
             vk::ImageLayout::ePresentSrcKHR,
-            vk::AccessFlagBits2::eColorAttachmentWrite,             // srcAccessMask
-            {},                                                     // dstAccessMask
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput,     // srcStage
-            vk::PipelineStageFlagBits2::eBottomOfPipe               // dstStage
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+            {},                                           
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,    
+            vk::PipelineStageFlagBits2::eBottomOfPipe
         );
 
         //-------------------------------------------------------------------------------------------------------------------
@@ -1293,15 +1265,15 @@ private:
     }
 
     /*
-    A Vulkan image is not just "an image". It also has a current usage/layout state. For a swapchain image, a typical frame does this:
+    Vulkan image also has a current usage/layout state. For a swapchain image, a typical frame does this:
     present engine was using image for presentation
-    → transition to color-attachment layout
-    → render into it
-    → transition back to present layout
-    → present it
+    : transition to color-attachment layout
+    : render into it
+    : transition back to present layout
+    : present it
     */
 
-    void transition_image_layout(   // won't go into details here
+    void transition_image_layout(
         uint32_t imageIndex,
         vk::ImageLayout oldLayout,
         vk::ImageLayout newLayout,
@@ -1339,12 +1311,13 @@ private:
     void createCommandBuffer() {
         vk::CommandBufferAllocateInfo allocInfo{
             .commandPool = commandPool,
-            .level = vk::CommandBufferLevel::ePrimary,  //  Can be submitted to a queue for execution, but cannot be called from other command buffers, secondary would be useful to reuse common operations
+            .level = vk::CommandBufferLevel::ePrimary,  // can be submitted to a queue for execution, but cannot be called from other command buffers, secondary would be useful to reuse common operations
             .commandBufferCount = 1  // only allocating one command buffer
         };
         commandBuffer = std::move(vk::raii::CommandBuffers(device, allocInfo).front()); // transfer ownership of this command buffer into my commandBuffer variable
     }
 
+    // WUICK NOTE!!!!!!!!!
     /* Rendering a frame in Vulkan:
         wait for previous frame to finish
         acquire an image from the swapchain
@@ -1352,7 +1325,7 @@ private:
         submit the recorded command buffer
         present the swapchain image
     */
-    //  synchronization of execution on the GPU is explicit, functions may return before the operation has finished for various API calls
+    //  synchronisation of execution on the GPU is explicit, functions may return before the operation has finished for various API calls
 
     // if each of the operations depends on the previous one finishing, we need to explore which primitives we can use to achieve the desired ordering.
     // binary semaphores: vkQueueSubmit(work: A, signal: S, wait: None), vkQueueSubmit(work: B, signal: None, wait: S)
@@ -1360,35 +1333,33 @@ private:
     /*
     // enqueue A, start work immediately, signal F when done
     vkQueueSubmit(work: A, fence: F)
-
     vkWaitForFence(F) // blocks execution until A has finished executing, BLOCK HOST EXECUTION
-
     save_screenshot_to_disk() // can't run until the transfer has finished
     */
-    // Because we re-record the command buffer every frame, we cannot record the next frame’s work to the command buffer until the current frame has finished executing
+    // Becase we re-record the command buffer every frame, we cannot record the next frame’s work to the command buffer until the current frame has finished executing
     
     /*
-    1. acquireNextImage(...)
-       → returns imageIndex
-       → signals presentCompleteSemaphore
+    acquireNextImage(...)
+       returns imageIndex
+       signals presentCompleteSemaphore
 
-    2. submit draw:
-       → waits on presentCompleteSemaphore
-       → renders into that image
+    submit draw:
+       waits on presentCompleteSemaphore
+       renders into that image
 
-    3. GPU finishes
-       → signals renderFinishedSemaphore
+    GPU finishes
+       signals renderFinishedSemaphore
 
-    4. present:
-       → waits on renderFinishedSemaphore
-       → shows image
+    present:
+       waits on renderFinishedSemaphore
+       shows image
     */
 
     void drawFrame() {
         // 1. CPU-GPU sync
-        auto fenceResult = device.waitForFences(*drawFence, vk::True, UINT64_MAX); // CPU: "Pause CPU execution HERE until previous frame is done by GPU, drawFence is signaled (by GPU)"
-        // vk::Result::eSuccess  → fence was signaled (normal case)
-        // vk::Result::eTimeout  → timeout happened(only if we DIDN'T use UINT64_MAX)
+        auto fenceResult = device.waitForFences(*drawFence, vk::True, UINT64_MAX); // CPU: Pause CPU execution HERE until previous frame is done by GPU, drawFence is signaled by GPU
+        // vk::Result::eSuccess : fence was signaled (normal case)
+        // vk::Result::eTimeout : timeout happened(only if we DIDN'T use UINT64_MAX)
         // 2. Get next image, signal presentCompleteSemaphore when image is safe
 
         if (vertexBufferDirty) {
@@ -1396,22 +1367,22 @@ private:
             vertexBufferDirty = false;
         }
 
-        auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore, nullptr); // signal when image becomes available, we DON'T want GPU to start rendering immediately
+        auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore, nullptr); // signal when image becomes available, I DON'T want GPU to start rendering immediately
         
         updateUniformBuffer();
-        // now we have image
+        // now I have image
         recordCommandBuffer(imageIndex);
         device.resetFences(*drawFence);
 
-        vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput); // GPU can run earlier stages, BUT must WAIT before writing to framebuffer. Vertex shader can run early. Fragment output must wait
-        // This describes ONE GPU submission to a queue, KIV: queue.submit(submitInfo, drawFence);
+        vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput); // GPU can run earlier stages, BUT must WAIT before writing to framebuffer. Vertex shader can run early. fragment output must wait
+        // describes ONE GPU submission to a queue, KIV: queue.submit(submitInfo, drawFence)
         const vk::SubmitInfo submitInfo{
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = &*presentCompleteSemaphore, // Do NOT start rendering until swapchain image is ready
             .pWaitDstStageMask = &waitDestinationStageMask,
             .commandBufferCount = 1,
             .pCommandBuffers = &*commandBuffer, //  the actual work GPU will execute
-            .signalSemaphoreCount = 1, // after GPU finishes → signal this semaphore
+            .signalSemaphoreCount = 1, // after GPU finish then signal this semaphore
             .pSignalSemaphores = &*renderFinishedSemaphore 
         };
 
@@ -1426,13 +1397,12 @@ private:
         };
 
         result = queue.presentKHR(presentInfoKHR);
-
     }
 
     void createSyncObjects() {
-        presentCompleteSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo()); // "Image is ready and safe to use → you can start rendering"
-        renderFinishedSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo()); // "GPU finished rendering → now safe to PRESENT"
-        drawFence = vk::raii::Fence(device, { .flags = vk::FenceCreateFlagBits::eSignaled } ); // Create a fence that starts in the "signaled" state, submit GPU work (with fence attached), GPU finishes → signals fence
+        presentCompleteSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo()); // Image is ready and safe to use, can start rendering
+        renderFinishedSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo()); // GPU finished rendering, now safe to PRESENT
+        drawFence = vk::raii::Fence(device, { .flags = vk::FenceCreateFlagBits::eSignaled } ); // Create a fence starting in the "signaled" state, submit GPU work (with fence attached), GPU finishe, then signals fence
     }
 
     void initVulkan() {
@@ -1443,7 +1413,7 @@ private:
         createSwapChain();
         createImageViews();
 
-        loadModel(); // loadModel() fills CPU arrays
+        loadModel(); // loadModel() fill CPU ARRAYS
         createVertexBuffer();
         createIndexBuffer();
 
@@ -1464,10 +1434,8 @@ private:
     void mainLoop() {
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
-
             glfwGetCursorPos(window, &mouseX, &mouseY);
             handleMouseInteraction(); // RUN INTERACTION LOGIC
-
             drawFrame();
         }
     }
@@ -1478,29 +1446,22 @@ private:
         glfwTerminate();
     }
 
-    std::vector<const char*> getRequiredInstanceExtensions()
-    {
+    std::vector<const char*> getRequiredInstanceExtensions() {
         uint32_t glfwExtensionCount = 0;
         auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
         std::vector extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
-
         return extensions;
     }
 
     void handleMouseInteraction() {
         bool leftPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
         Ray ray = makeMouseRay(mouseX, mouseY);
-
         if (leftPressed && !isDragging) {
             selectedVertex = pickVertex(ray);
-
             if (selectedVertex != -1) {
                 isDragging = true;
-
                 preDragAllPositions.clear();
                 preDragAllPositions.reserve(vertices.size());
-
                 for (const auto& v : vertices) {
                     preDragAllPositions.push_back(v.pos);
                 }
@@ -1509,13 +1470,7 @@ private:
                 buildDraggedVertexGroup(originalVertexPos);
 
                 glm::vec3 hitPoint; // 3D point on drag plane
-                bool ok = intersectRayWithPlane(
-                    ray,
-                    originalVertexPos,
-                    glm::vec3(0.0f, 0.0f, 1.0f),
-                    hitPoint
-                );
-
+                bool ok = intersectRayWithPlane(ray, originalVertexPos, glm::vec3(0.0f, 0.0f, 1.0f), hitPoint);
                 if (ok) { // if hit successfully, only update the mesh if we successfully found a valid 3D mouse position
                     dragStartWorldPos = hitPoint; // SAVED
                 }
@@ -1527,33 +1482,21 @@ private:
             }
         } else if (leftPressed && isDragging) {
             glm::vec3 hitPoint;
-            bool ok = intersectRayWithPlane(
-                ray,
-                originalVertexPos,
-                glm::vec3(0.0f, 0.0f, 1.0f),
-                hitPoint
-            );
-
+            bool ok = intersectRayWithPlane(ray, originalVertexPos, glm::vec3(0.0f, 0.0f, 1.0f), hitPoint);
             if (ok) {
                 lastDragDelta = hitPoint - dragStartWorldPos;
-
                 for (size_t k = 0; k < draggedVertexGroup.size(); k++) {
                     int idx = draggedVertexGroup[k];
                     vertices[idx].pos = draggedVertexOriginalPositions[k] + lastDragDelta;
                 }
-
                 vertexBufferDirty = true;
             }
         }
         else if (!leftPressed && isDragging) {
             std::cout << "[rank " << get_worker_id() << "] mouse released, entering meshPregel\n";
-
             meshPregel(lastDragDelta, draggedVertexGroup);
-
             std::cout << "[rank " << get_worker_id() << "] meshPregel returned\n";
-
             vertexBufferDirty = true;
-
             isDragging = false;
             selectedVertex = -1;
             draggedVertexGroup.clear();
@@ -1562,7 +1505,7 @@ private:
     }
 
     // Vulkan mesh, dragged anchor vertices, cursor displacement
-    class MeshPregelVertex : public BaseVertex<MeshValue, int, MeshMessage, DefaultHash, BaseCombiner<MeshMessage>, BaseAggregator<void> > {
+    class MeshPregelVertex : public BVertex<MeshValue, int, MeshMessage, DefaultHash, BaseCombiner<MeshMessage>, BaseAggregator<void> > {
     public:
         typedef MeshValue ValueType;
         typedef int EdgeType;
@@ -1572,8 +1515,8 @@ private:
         typedef BaseAggregator<void> AggregatorType;
 
         MeshPregelVertex() {}
-        MeshPregelVertex(VertexID id) : BaseVertex<MeshValue, int, MeshMessage, DefaultHash, BaseCombiner<MeshMessage>, BaseAggregator<void> >(id) {}
-        MeshPregelVertex(VertexID id, MeshValue &value) : BaseVertex<MeshValue, int, MeshMessage, DefaultHash, BaseCombiner<MeshMessage>, BaseAggregator<void> >(id, value) {}
+        MeshPregelVertex(VertexID id) : BVertex<MeshValue, int, MeshMessage, DefaultHash, BaseCombiner<MeshMessage>, BaseAggregator<void> >(id) {}
+        MeshPregelVertex(VertexID id, MeshValue &value) : BVertex<MeshValue, int, MeshMessage, DefaultHash, BaseCombiner<MeshMessage>, BaseAggregator<void> >(id, value) {}
 
         bool operator<(const MeshPregelVertex& rhs) const {
             return this->id() < rhs.id();
@@ -1600,12 +1543,10 @@ private:
                 }
 
                 float inv = 1.0f / static_cast<float>(messages.size());
-
                 float avgX = sx * inv;
                 float avgY = sy * inv;
                 float avgZ = sz * inv;
-
-                float alpha = 0.5f;
+                float alpha = 0.5f; // arbitrary!!
 
                 value().disp_x = (1.0f - alpha) * value().disp_x + alpha * avgX;
                 value().disp_y = (1.0f - alpha) * value().disp_y + alpha * avgY;
@@ -1653,7 +1594,6 @@ private:
                 value.base_x = p.x;
                 value.base_y = p.y;
                 value.base_z = p.z;
-
                 if (isAnchor[i]) {
                     value.disp_x = input.delta.x;
                     value.disp_y = input.delta.y;
@@ -1670,8 +1610,8 @@ private:
 
             auto addUndirectedEdge = [&](int a, int b) { 
                 int dummy = 1;
-                BaseEdge<int> e1(b, dummy);
-                BaseEdge<int> e2(a, dummy);
+                BEdge<int> e1(b, dummy);
+                BEdge<int> e2(a, dummy);
                 buffer->add_edge(a, e1);
                 buffer->add_edge(b, e2);
             };
@@ -1689,12 +1629,12 @@ private:
         int id = 0;
         GraphBuffer<MeshPregelVertex>* buffer = nullptr;
     };
+
     void meshPregel(const glm::vec3& delta, const std::vector<int>& anchors) {
         int workers = get_num_workers();
-
         if (workers != 1) {
-            std::cerr << "ERROR: interactive meshPregel currently only works with 1 MPI rank.\n";
-            std::cerr << "You are running with " << workers << " ranks.\n";
+            std::cerr << "ERROR: interactive meshPregel currently only works with 1 MPI rank \n";
+            std::cerr << "Currently running with " << workers << " ranks \n";
             return;
         }
 
@@ -1703,11 +1643,9 @@ private:
         input.indices = &indices;
         input.anchors = const_cast<std::vector<int>*>(&anchors);
         input.delta = delta;
-
         g_meshInput = &input;
 
         int num_partitions_dum = 1;
-
         Worker<MeshPregelVertex, MeshGraphLoader> worker;
         worker.run(num_partitions_dum);
 
@@ -1728,25 +1666,21 @@ private:
                 );
             }
         }
-
         vertexBufferDirty = true;
         g_meshInput = nullptr;
     }
 };
 
 int main(int argc, char** argv) {
-    try {
+    try { // CHECK!!!!!
         init_pregel(argc, argv);
-
         MeshApp app;
         app.run();
-
         MPI_Finalize();
     }
     catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;
         return EXIT_FAILURE;
     }
-
     return EXIT_SUCCESS;
 }
