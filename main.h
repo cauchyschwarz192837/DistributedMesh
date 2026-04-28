@@ -54,7 +54,7 @@ class DefaultHash {
 public:
     DivisionID operator()(VertexID id, int num_partitions) {
         if (num_partitions <= 0) {
-            throw std::runtime_error("DefaultHash: num_partitions must be > 0");
+            throw std::runtime_error("num_partitions must be > 0");
         }
         return id % num_partitions;
     }

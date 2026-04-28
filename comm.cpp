@@ -2,7 +2,7 @@
 #include "main.h"
 #include "C:/Program Files (x86)/Microsoft SDKs/MPI/Include/mpi.h"
 
-static int _my_rank, _num_processors;
+static int _my_rank, _num_processors; // at file scope internal link
 void* global_message_buffer = nullptr;
 void* global_graph_buffer = nullptr;
 void* _global_aggregator = nullptr;
@@ -19,10 +19,10 @@ int get_num_workers() {
 void init_workers(int* argc, char*** argv ) {
 	MPI_Init(argc, argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &_num_processors);
-	MPI_Comm_rank(MPI_COMM_WORLD, &_my_rank);
+	MPI_Comm_rank(MPI_COMM_WORLD, &_my_rank); // ASSIGN!!!!!!!
 }
 
-int all_sum(int my_copy) { // every worker contributes one integer, and everyone gets back the sum across all workers
+int all_sum(int my_copy) { // every worker contributs one integer, and everyone gets back the sum across all workers
 	int toRet = 0;
 	MPI_Allreduce(&my_copy, &toRet, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 	return toRet;
@@ -103,9 +103,4 @@ void _set_aggregator(void* ptr) {
 
 void* _get_aggregator() {
 	return _global_aggregator;
-}
-
-void init_pregel(int argc, char** argv) {
-        init_workers(&argc, &argv);
-		MPI_Barrier(MPI_COMM_WORLD);
 }

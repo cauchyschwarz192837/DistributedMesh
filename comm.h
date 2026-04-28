@@ -28,6 +28,5 @@ int get_halt_count();
 void vote_for_halt();
 void _set_aggregator(void* ptr);
 void* _get_aggregator();
-void init_pregel(int argc, char** argv);
 
 extern int global_step_num;

@@ -103,6 +103,8 @@ struct MeshInput {
 
 static MeshInput* g_meshInput = nullptr;
 
+
+//--------------------------------------------------------------------------------- THE GUY
 class MeshApp {
 public:
     void run() {
@@ -114,7 +116,6 @@ public:
 
     // When the shader asks for location 0, read from pos
     // When the shader asks for location 1, read from normal
-
 // raii for standalone owning objects
 private:
     GLFWwindow* window = nullptr;
@@ -143,6 +144,7 @@ private:
     vk::raii::Semaphore renderFinishedSemaphore = nullptr;
     vk::raii::Fence drawFence = nullptr;
 
+    /********/
     std::vector<Vertex> vertices; // CPU copy of mesh vertices, later deformation modifies vertices, editable model data
     std::vector<uint32_t> indices; // CPU copy of triangle connectivity, GPU upload reads from vertices and indices
 
@@ -1673,7 +1675,8 @@ private:
 
 int main(int argc, char** argv) {
     try { // CHECK!!!!!
-        init_pregel(argc, argv);
+        init_workers(&argc, &argv); // MPI STARTUP GO
+        MPI_Barrier(MPI_COMM_WORLD);
         MeshApp app;
         app.run();
         MPI_Finalize();
