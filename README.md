@@ -2,10 +2,10 @@
 Experimental self-implemented C++ Pregel on 3D mesh deformation demonstration. Fundamentally working but lacking optimisations on the Pregel side (not much) or the graphics side (not so sure about what in Vulkan specifically) or the algorithm side (even a simple Euler integration would probably be better than my current compute() function, which is overly simple because I want to focus on implementing Pregel here, but it would be worthwhile to read ARAP, discrete curvature, Pixar hair modelling, NVIDIA papers, for better idea of more PBR algorithms). Or it could simply be that message-passing is overkill for something "straightforward" like mesh deformation and the overhead is too much
 
 ## Important files
-CMakeProject1.cpp is the main Vulkan application and some mesh-specific Pregel logic (this does not seem like good organisation but it will suffice)
-main.h is my Pregel-style framework: vertices, edges, partitions, graph buffer, message buffer, worker loop, serialisation and other stuff
-comm.cpp is the MPI setup and communication helpers
-models/
+- CMakeProject1.cpp is the main Vulkan application and some mesh-specific Pregel logic (this does not seem like good organisation but it will suffice)
+- main.h is my Pregel-style framework: vertices, edges, partitions, graph buffer, message buffer, worker loop, serialisation and other stuff
+- comm.cpp is the MPI setup and communication helpers
+- models/
  12683_hand_v1_FINAL.obj is a free model I downloaded online. Note that this is only .obj data, rendering is done entirely through the Vulkan API. I will not explain the entire rendering pipeline here
 
 ## Explanation of how this code flows
