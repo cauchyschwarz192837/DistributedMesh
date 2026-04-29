@@ -32,6 +32,7 @@ Then the drag displacement is propagated through this graph using messages. Anch
 ## More explanations
 ### CMakeProject1.cpp (can just ignore if unfamiliar with graphics pipeline)
 This is the main application file
+
 - Vulkan window and rendering setup
 - obj model loading through tiny_obj_loader
 - CPU-side mesh storage: (NOTE! This is what is edited before presentation to GPU-side Vulkan buffers)
