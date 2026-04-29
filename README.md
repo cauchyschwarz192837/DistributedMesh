@@ -46,15 +46,16 @@ This is the main application file
 - mesh-specific Pregel logic: MeshPregelVertex, MeshGraphLoader, meshPregel(args...)
 
 ### main.h
-Generic Pregel-like framework. Note MeshValue stores the base vertex position, current displacement and whether the vertex is an anchor. MeshMessage is the displacement vector sent between neighbouring vertices.
-BVertex is one graph vertex
-BEdge is one graph edge
-Division isone partition containing many vertices
-GraphBuffer is temporary graph builder and graph distributor
-MessageBuffer is the big mailbox to stores outgoing and incoming messages (*)
-Worker runs supersteps
-SerialMe converts objects into bytes for MPI
-UnSerialMe reconstructs objects from  reading bytes
+Generic Pregel-like framework. Note MeshValue stores the base vertex position, current displacement and whether the vertex is an anchor
+- MeshMessage is the displacement vector sent between neighbouring vertices.
+- BVertex is one graph vertex
+- BEdge is one graph edge
+- Division isone partition containing many vertices
+- GraphBuffer is temporary graph builder and graph distributor
+- MessageBuffer is the big mailbox to stores outgoing and incoming messages (*)
+- Worker runs supersteps
+- SerialMe converts objects into bytes for MPI
+- UnSerialMe reconstructs objects from  reading bytes
 
 ### comm.cpp
 Just some wrapping of the MPI communication layer used by the Pregel framework here
