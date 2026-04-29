@@ -9,17 +9,17 @@ models/
  12683_hand_v1_FINAL.obj is a free model I downloaded online. Note that this is only .obj data, rendering is done entirely through the Vulkan API. I will not explain the entire rendering pipeline here
 
 ## Explanation of how this code flows
-User does a mouse drag on my GLFW window
-MeshApp::handleMouseInteraction() is called
-we select anchor vertices near cursor (from some casted ray intersections)
-meshPregel(delta, anchors) is called
-MeshGraphLoader builds graph from Vulkan mesh (sent to it from my Vulkan-side code in the form of a MeshInput)
-Worker runs Pregel supersteps
-MeshPregelVertex::compute() averages neighbour displacement messages
-updated displacement written back to vertices[id].pos
-vertexBufferDirty = true
-uploadVertexBuffer()
-Vulkan renders modified mesh
+- User does a mouse drag on my GLFW window
+- MeshApp::handleMouseInteraction() is called
+- we select anchor vertices near cursor (from some casted ray intersections)
+- meshPregel(delta, anchors) is called
+- MeshGraphLoader builds graph from Vulkan mesh (sent to it from my Vulkan-side code in the form of a MeshInput)
+- Worker runs Pregel supersteps
+- MeshPregelVertex::compute() averages neighbour displacement messages
+- updated displacement written back to vertices[id].pos
+- vertexBufferDirty = true
+- uploadVertexBuffer()
+- Vulkan renders modified mesh
 
 ## Idea
 The mesh is converted into a graph
@@ -77,5 +77,5 @@ while not halted:
     aggregate global data
     check global halt condition
 
-I also put the mpi.h filepath very local, so please change it to wherever your path is. models/12683_hand_v1_FINAL.obj needs to be downloaded, or just replace with any .obj file you want. This is what happens when you pull a subset of vertices, you can clearly see that the mesh is STRETCHING instead of just vertices being PROTRUDED straight out. This is because the message passing is working and neighbouring vertices are hearing the messages that their neighbours got displaced, so they are being dragged along as well. This is only run for a few iterations because its quite slow, I need to optimise this or its just not viable at all. This needs some more significant ideas. But at least it shows that my Pregel baseline is functional.
+I also put the mpi.h filepath very local, so please change it to wherever your path is. models/12683_hand_v1_FINAL.obj needs to be downloaded, or just replace with any .obj file you want. This is what happens when you pull a subset of vertices, you can clearly see that the mesh is STRETCHING instead of just vertices being PROTRUDED straight out. This is because the message passing is working and neighbouring vertices are hearing the messages that their neighbours got displaced, so they are being dragged along as well. This is only run for a few iterations because its quite slow, I need to optimise this or its just not viable at all. This needs some more significant ideas. But at least it shows that my Pregel baseline is functional
 <img width="1920" height="1080" alt="Screenshot (247)" src="https://github.com/user-attachments/assets/16ef16c6-9bd6-406d-ac14-4ff0ab9dc0f1" />
